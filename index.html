@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Scanme</title>
+  
+  <!-- เชื่อมโยง Manifest เพื่อรองรับการติดตั้งลงมือถือ -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#000000">
+  
+  <!-- ไอคอนสำหรับ iOS (รูป QR Code) -->
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='black'%3E%3Crect width='100' height='100' fill='white'/%3E%3Cpath d='M10 10h30v30H10zm10 10v10h10V20zm40-10h30v30H60zm10 10v10h10V20zM10 60h30v30H10zm10 10v10h10V70zm40 0h10v10H60zm20 0h10v20H80zm-10 10h10v10H70zm20-10h10v10H90zm-30-20h10v10H60zm20 0h10v10H80z'/%3E%3C/svg%3E">
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body, html {
+      width: 100%;
+      height: 100%;
+      background-color: #121212;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+    }
+
+    /* หน้าจอเริ่มต้นตอนยังไม่มีรูป */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: white;
+    }
+
+    .btn-upload {
+      background-color: #007aff;
+      color: white;
+      padding: 16px 28px;
+      font-size: 18px;
+      font-weight: bold;
+      border-radius: 50px;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 4px 15px rgba(0, 122, 255, 0.4);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* ซ่อน input type="file" เอาไว้ */
+    #file-input {
+      display: none;
+    }
+
+    /* ส่วนแสดงผลรูปภาพเต็มจอ */
+    .image-container {
+      display: none;
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+      background-color: black;
+    }
+
+    .image-container img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain; /* รูปจะพอดีเต็มจอและไม่เสียสัดส่วน */
+    }
+
+    /* ปุ่มลบภาพ */
+    .btn-delete {
+      position: absolute;
+      top: 25px;
+      right: 25px;
+      background: rgba(255, 59, 48, 0.85);
+      backdrop-filter: blur(5px);
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      font-size: 15px;
+      font-weight: bold;
+      border-radius: 30px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 1. ส่วนเลือกรูปภาพ -->
+  <div class="empty-state" id="empty-state">
+    <input type="file" id="file-input" accept="image/*">
+    <button class="btn-upload" onclick="document.getElementById('file-input').click()">
+      ➕ เพิ่มรูปภาพ
+    </button>
+  </div>
+
+  <!-- 2. ส่วนแสดงภาพเต็มจอ + ปุ่มลบ -->
+  <div class="image-container" id="image-container">
+    <button class="btn-delete" onclick="removeImage()">🗑️ ลบ / เปลี่ยนรูป</button>
+    <img id="display-image" src="" alt="Full Screen Preview">
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('file-input');
+    const displayImage = document.getElementById('display-image');
+    const emptyState = document.getElementById('empty-state');
+    const imageContainer = document.getElementById('image-container');
+
+    // โหลดรูปมาแสดงผลเต็มจอ
+    fileInput.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+          displayImage.src = event.target.result;
+          emptyState.style.display = 'none';
+          imageContainer.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    // ฟังก์ชันลบรูป
+    function removeImage() {
+      displayImage.src = '';
+      fileInput.value = ''; // เคลียร์ไฟล์ที่เลือก
+      imageContainer.style.display = 'none';
+      emptyState.style.display = 'flex';
+    }
+
+    // ลงทะเบียน Service Worker เพื่อให้ติดตั้งได้
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js');
+    }
+  </script>
+</body>
+</html>
