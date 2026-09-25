@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#000000">
   
-  <!-- ไอคอนสำหรับ iOS (รูป QR Code) -->
+  <!-- ไอคอน QR Code สำหรับ iOS -->
   <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='black'%3E%3Crect width='100' height='100' fill='white'/%3E%3Cpath d='M10 10h30v30H10zm10 10v10h10V20zm40-10h30v30H60zm10 10v10h10V20zM10 60h30v30H10zm10 10v10h10V70zm40 0h10v10H60zm20 0h10v20H80zm-10 10h10v10H70zm20-10h10v10H90zm-30-20h10v10H60zm20 0h10v10H80z'/%3E%3C/svg%3E">
 
   <style>
@@ -20,14 +20,14 @@
     body, html {
       width: 100%;
       height: 100%;
-      background-color: #121212;
+      background-color: #000000;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       overflow: hidden;
       user-select: none;
       -webkit-user-select: none;
     }
 
-    /* หน้าจอเริ่มต้นตอนยังไม่มีรูป */
+    /* สถานะก่อนเลือกรูป */
     .empty-state {
       display: flex;
       flex-direction: column;
@@ -57,33 +57,34 @@
       display: none;
     }
 
-    /* ส่วนแสดงผลรูปภาพเต็มจอ */
+    /* ส่วนแสดงภาพเต็มจอ */
     .image-container {
       display: none;
       width: 100vw;
       height: 100vh;
       position: relative;
-      background-color: black;
+      background-color: #000000;
     }
 
     .image-container img {
       width: 100%;
       height: 100%;
-      object-fit: contain; /* ป้องกันภาพยืดผิดสัดส่วน */
+      object-fit: contain;
     }
 
-    /* ปุ่มลบภาพ */
+    /* ปุ่มลบ/เปลี่ยนรูป */
     .btn-delete {
       position: absolute;
       top: 25px;
-      right: 25px;
+      right: 20px;
       background: rgba(255, 59, 48, 0.85);
-      backdrop-filter: blur(5px);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       color: white;
       border: none;
-      padding: 12px 20px;
+      padding: 10px 18px;
       font-size: 15px;
-      font-weight: bold;
+      font-weight: 600;
       border-radius: 30px;
       cursor: pointer;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
@@ -94,7 +95,7 @@
 </head>
 <body>
 
-  <!-- 1. ส่วนเลือกรูปภาพ -->
+  <!-- ส่วนเพิ่มรูปภาพ -->
   <div class="empty-state" id="empty-state">
     <input type="file" id="file-input" accept="image/*">
     <button class="btn-upload" onclick="document.getElementById('file-input').click()">
@@ -102,9 +103,9 @@
     </button>
   </div>
 
-  <!-- 2. ส่วนแสดงภาพเต็มจอ + ปุ่มลบ -->
+  <!-- ส่วนแสดงภาพเต็มจอ + ปุ่มลบ -->
   <div class="image-container" id="image-container">
-    <button class="btn-delete" onclick="removeImage()">🗑️ ลบ / เปลี่ยนรูป</button>
+    <button class="btn-delete" onclick="removeImage()">🗑️ เปลี่ยนรูป</button>
     <img id="display-image" src="" alt="Full Screen Preview">
   </div>
 
@@ -114,45 +115,116 @@
     const emptyState = document.getElementById('empty-state');
     const imageContainer = document.getElementById('image-container');
 
-    // 1. ตรวจสอบเมื่อเปิดแอปว่ามีรูปเดิมบันทึกไว้ในเครื่องหรือไม่
-    window.addEventListener('DOMContentLoaded', () => {
-      const savedImage = localStorage.getItem('scanme_saved_image');
+    // --- ส่วนจัดการฐานข้อมูลถาวร (IndexedDB) ---
+    function openDatabase() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open('ScanmeAppDB', 1);
+        request.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains('images')) {
+            db.createObjectStore('images', { keyPath: 'id' });
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function saveImageToDB(dataUrl) {
+      const db = await openDatabase();
+      const tx = db.transaction('images', 'readwrite');
+      const store = tx.objectStore('images');
+      store.put({ id: 'active_photo', data: dataUrl });
+      return tx.complete;
+    }
+
+    async function loadImageFromDB() {
+      const db = await openDatabase();
+      return new Promise((resolve) => {
+        const tx = db.transaction('images', 'readonly');
+        const store = tx.objectStore('images');
+        const req = store.get('active_photo');
+        req.onsuccess = () => resolve(req.result ? req.result.data : null);
+        req.onerror = () => resolve(null);
+      });
+    }
+
+    async function removeImageFromDB() {
+      const db = await openDatabase();
+      const tx = db.transaction('images', 'readwrite');
+      const store = tx.objectStore('images');
+      store.delete('active_photo');
+      return tx.complete;
+    }
+
+    // --- ย่อขนาดภาพอัตโนมัติ เพื่อให้โหลดไวและไม่ติดปัญหาความจำ ---
+    function compressImage(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (e) => {
+          const img = new Image();
+          img.src = e.target.result;
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            const maxDim = 1600; // ความละเอียดสูงสุดที่คมชัดบนมือถือ
+
+            if (width > height && width > maxDim) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else if (height > maxDim) {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // บีบอัดเป็น WebP/JPEG คุณภาพสูง
+            const compressedData = canvas.toDataURL('image/jpeg', 0.88);
+            resolve(compressedData);
+          };
+        };
+      });
+    }
+
+    // --- โหลดภาพเดิมทันทีเมื่อเปิดแอป ---
+    async function initApp() {
+      const savedImage = await loadImageFromDB();
       if (savedImage) {
         showImage(savedImage);
       }
-    });
+    }
+    window.addEventListener('DOMContentLoaded', initApp);
 
-    // 2. เมื่อเลือกรูปภาพใหม่ บันทึกลงเครื่องและแสดงผล
-    fileInput.addEventListener('change', function(e) {
+    // --- เมื่อผู้ใช้เลือกรูปภาพ ---
+    fileInput.addEventListener('change', async function(e) {
       const file = e.target.files[0];
       if (file) {
-        const reader = new FileReader();
-        reader.onload = function(event) {
-          const imageData = event.target.result;
-          
-          try {
-            // บันทึกรูปภาพลง LocalStorage
-            localStorage.setItem('scanme_saved_image', imageData);
-            showImage(imageData);
-          } catch (err) {
-            // กรณีรูปไฟล์ใหญ่เกินข้อจำกัดของเบราว์เซอร์
-            alert('รูปภาพมีขนาดใหญ่เกินไป กรุณาใช้รูปที่มีขนาดเล็กลงหรือความละเอียดพอดีกับหน้าจอ');
-          }
-        };
-        reader.readAsDataURL(file);
+        try {
+          const compressedData = await compressImage(file);
+          await saveImageToDB(compressedData);
+          showImage(compressedData);
+        } catch (err) {
+          alert('เกิดข้อผิดพลาดในการบันทึกรูปภาพ กรุณาลองใหม่อีกครั้ง');
+        }
       }
     });
 
-    // ฟังก์ชันแสดงผลรูปภาพ
+    // --- แสดงผลรูปภาพ ---
     function showImage(dataUrl) {
       displayImage.src = dataUrl;
       emptyState.style.display = 'none';
       imageContainer.style.display = 'block';
     }
 
-    // 3. ฟังก์ชันลบรูป (ลบออกจากหน่วยความจำเครื่อง)
-    function removeImage() {
-      localStorage.removeItem('scanme_saved_image');
+    // --- ลบรูปภาพ ---
+    async function removeImage() {
+      await removeImageFromDB();
       displayImage.src = '';
       fileInput.value = '';
       imageContainer.style.display = 'none';
