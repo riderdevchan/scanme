@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Scanme</title>
   
-  <!-- เชื่อมโยง Manifest เพื่อรองรับการติดตั้งลงมือถือ -->
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#000000">
   
@@ -24,6 +23,8 @@
       background-color: #121212;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     /* หน้าจอเริ่มต้นตอนยังไม่มีรูป */
@@ -49,9 +50,9 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      -webkit-tap-highlight-color: transparent;
     }
 
-    /* ซ่อน input type="file" เอาไว้ */
     #file-input {
       display: none;
     }
@@ -68,7 +69,7 @@
     .image-container img {
       width: 100%;
       height: 100%;
-      object-fit: contain; /* รูปจะพอดีเต็มจอและไม่เสียสัดส่วน */
+      object-fit: contain; /* ป้องกันภาพยืดผิดสัดส่วน */
     }
 
     /* ปุ่มลบภาพ */
@@ -86,6 +87,8 @@
       border-radius: 30px;
       cursor: pointer;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      z-index: 10;
+      -webkit-tap-highlight-color: transparent;
     }
   </style>
 </head>
@@ -111,29 +114,52 @@
     const emptyState = document.getElementById('empty-state');
     const imageContainer = document.getElementById('image-container');
 
-    // โหลดรูปมาแสดงผลเต็มจอ
+    // 1. ตรวจสอบเมื่อเปิดแอปว่ามีรูปเดิมบันทึกไว้ในเครื่องหรือไม่
+    window.addEventListener('DOMContentLoaded', () => {
+      const savedImage = localStorage.getItem('scanme_saved_image');
+      if (savedImage) {
+        showImage(savedImage);
+      }
+    });
+
+    // 2. เมื่อเลือกรูปภาพใหม่ บันทึกลงเครื่องและแสดงผล
     fileInput.addEventListener('change', function(e) {
       const file = e.target.files[0];
       if (file) {
         const reader = new FileReader();
         reader.onload = function(event) {
-          displayImage.src = event.target.result;
-          emptyState.style.display = 'none';
-          imageContainer.style.display = 'block';
+          const imageData = event.target.result;
+          
+          try {
+            // บันทึกรูปภาพลง LocalStorage
+            localStorage.setItem('scanme_saved_image', imageData);
+            showImage(imageData);
+          } catch (err) {
+            // กรณีรูปไฟล์ใหญ่เกินข้อจำกัดของเบราว์เซอร์
+            alert('รูปภาพมีขนาดใหญ่เกินไป กรุณาใช้รูปที่มีขนาดเล็กลงหรือความละเอียดพอดีกับหน้าจอ');
+          }
         };
         reader.readAsDataURL(file);
       }
     });
 
-    // ฟังก์ชันลบรูป
+    // ฟังก์ชันแสดงผลรูปภาพ
+    function showImage(dataUrl) {
+      displayImage.src = dataUrl;
+      emptyState.style.display = 'none';
+      imageContainer.style.display = 'block';
+    }
+
+    // 3. ฟังก์ชันลบรูป (ลบออกจากหน่วยความจำเครื่อง)
     function removeImage() {
+      localStorage.removeItem('scanme_saved_image');
       displayImage.src = '';
-      fileInput.value = ''; // เคลียร์ไฟล์ที่เลือก
+      fileInput.value = '';
       imageContainer.style.display = 'none';
       emptyState.style.display = 'flex';
     }
 
-    // ลงทะเบียน Service Worker เพื่อให้ติดตั้งได้
+    // ลงทะเบียน Service Worker
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js');
     }
